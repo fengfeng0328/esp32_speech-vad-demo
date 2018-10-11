@@ -79,6 +79,7 @@ static void audio_recorder_AC101_init()
 //	vTaskDelete(NULL);
 //}
 
+/* 实际采集一定数据的时间(计算时间) < 说话人说话同等数据所花时间 */
 static void esp32_vad_task(void *pvParameters)
 {
 	int recv_len = 0;
@@ -87,21 +88,20 @@ static void esp32_vad_task(void *pvParameters)
 	int16_t data[FRAME_SIZE];		// FRAME_SIZE * 16bit/2
 	int16_t data_del[FRAME_SIZE];
 
-	simple_vad *vad = simple_vad_create();	//simple_vad_free(vad);
+	simple_vad *vad = simple_vad_create();
 	if (vad == NULL) {
 		vTaskDelete(NULL);
 	}
 	QueueHandle_t data_que = NULL;
-	data_que = xQueueCreate(2000, sizeof(int16_t) * FRAME_SIZE);	// 625k内存
-
+	data_que = xQueueCreate(VAD_TIME_TOTAL, sizeof(int16_t) * FRAME_SIZE);	// 625k内存
 
 	i2s_start(I2S_NUM_0);
 	printf("\nstart vad detection\n");
 	while(1)
 	{
-		recv_len=i2s_read_bytes(I2S_NUM_0,data,320,portMAX_DELAY);
+		recv_len=i2s_read_bytes(I2S_NUM_0,data,sizeof(int16_t) * FRAME_SIZE,portMAX_DELAY);
 		xQueueSend(data_que, data, portMAX_DELAY);
-		if (uxQueueMessagesWaiting(data_que) == 101)	// keep 100 in data_que
+		if (uxQueueMessagesWaiting(data_que) == START_TIME + 1)	// keep 100 in data_que
 		{
 			xQueueReceive(data_que,data_del,portMAX_DELAY);
 		}
@@ -109,7 +109,7 @@ static void esp32_vad_task(void *pvParameters)
 		printf("%d \t",is_active);
 		if (is_active == 1) {
 			count++;
-			if (count == 100) {		// 1s
+			if (count == START_TIME) {		// 1s
 				count = 0;
 				goto status_1;
 			}
@@ -120,15 +120,15 @@ static void esp32_vad_task(void *pvParameters)
 	}
 status_1:
 	printf("\nTo prepare the recording 20s\n");
-	for (int i = 0; i < 1900; i++)	// 0.01s * 2000 = 20s
+	for (int i = 0; i < VAD_TIME_TOTAL-START_TIME; i++)	// 0.01s * 2000 = 20s
 	{
-		recv_len=i2s_read_bytes(I2S_NUM_0,data,320,portMAX_DELAY);
+		recv_len=i2s_read_bytes(I2S_NUM_0,data,sizeof(int16_t) * FRAME_SIZE,portMAX_DELAY);
 		xQueueSend(data_que, data, portMAX_DELAY);
 		is_active = process_vad(vad, data);
 		printf("%d \t", is_active);
 		if (is_active == 0) {
 			count++;
-			if (count == 100) {
+			if (count == END_TIME) {
 				count = 0;
 				goto status_2;
 			}
@@ -141,11 +141,17 @@ status_2:
 	printf("\nplay recording\n");
 	while(1)
 	{
-		xQueueReceive(data_que,data,portMAX_DELAY);
-		i2s_write_bytes(I2S_NUM_0, data, recv_len, portMAX_DELAY);	//recv_len=320
+		if (uxQueueMessagesWaiting(data_que) == 0)
+			break;
+		else
+		{
+			xQueueReceive(data_que, data, portMAX_DELAY);
+			i2s_write_bytes(I2S_NUM_0, data, recv_len, portMAX_DELAY);//recv_len=320
+		}
 	}
-
+	printf("esp32_vad_task is over, thank you!\n");
 	i2s_stop(I2S_NUM_0);
+	vQueueDelete(data_que);
 	simple_vad_free(vad);
 	vTaskDelete(NULL);
 }
