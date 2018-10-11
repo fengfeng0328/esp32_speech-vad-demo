@@ -101,7 +101,7 @@ static void esp32_vad_task(void *pvParameters)
 	{
 		recv_len=i2s_read_bytes(I2S_NUM_0,data,sizeof(int16_t) * FRAME_SIZE,portMAX_DELAY);
 		xQueueSend(data_que, data, portMAX_DELAY);
-		if (uxQueueMessagesWaiting(data_que) == START_TIME + 1)	// keep 100 in data_que
+		if (uxQueueMessagesWaiting(data_que) == START_CACHE_TIME + 1)	// must +1
 		{
 			xQueueReceive(data_que,data_del,portMAX_DELAY);
 		}
@@ -119,8 +119,8 @@ static void esp32_vad_task(void *pvParameters)
 		i2s_write_bytes(I2S_NUM_0,data,recv_len,portMAX_DELAY);
 	}
 status_1:
-	printf("\nTo prepare the recording 20s\n");
-	for (int i = 0; i < VAD_TIME_TOTAL-START_TIME; i++)	// 0.01s * 2000 = 20s
+	printf("\nTo prepare the recording %ds\n", (int)(VAD_TIME_TOTAL * 0.01));
+	for (int i = 0; i < VAD_TIME_TOTAL-START_CACHE_TIME; i++)	// 0.01s * 2000 = 20s
 	{
 		recv_len=i2s_read_bytes(I2S_NUM_0,data,sizeof(int16_t) * FRAME_SIZE,portMAX_DELAY);
 		xQueueSend(data_que, data, portMAX_DELAY);

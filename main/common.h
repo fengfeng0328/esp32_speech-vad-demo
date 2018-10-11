@@ -46,8 +46,11 @@
 // VAD 检测总次数   	0.01s(0.02s,0.03s) * 2000
 #define VAD_TIME_TOTAL 2000
 
-// VAD 触发检测次数  	0.01s(0.02s,0.03s) * 100
-#define START_TIME 100
+// VAD 触发前缓存次数 	0.01s(0.02s,0.03s) * 100
+#define START_CACHE_TIME 100
+
+// VAD 触发检测次数  	0.01s(0.02s,0.03s) * 50
+#define START_TIME 50
 
 // VAD 结束检测次数 	0.01s(0.02s,0.03s) * 100
 #define END_TIME 100
