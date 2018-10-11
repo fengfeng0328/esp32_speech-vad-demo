@@ -4,6 +4,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 #include "driver/gpio.h"
 #include "driver/i2s.h"
@@ -54,25 +55,90 @@ static void audio_recorder_AC101_init()
 	i2s_stop(I2S_NUM_0);
 }
 
-static void alexa__AC101_task(void *pvParameters)
+//static void alexa__AC101_task(void *pvParameters)
+//{
+//	int recv_len=0;
+//	int is_active;
+//	int16_t data[FRAME_SIZE];	// FRAME_SIZE * 16bit/2
+//
+//	simple_vad *vad = simple_vad_create();	//simple_vad_free(vad);
+//	if (vad == NULL) {
+//		vTaskDelete(NULL);
+//	}
+//
+//	i2s_start(I2S_NUM_0);
+//	while(1)
+//	{
+//		recv_len=i2s_read_bytes(I2S_NUM_0,data,320,portMAX_DELAY);
+//		is_active = process_vad(vad, data);
+//		printf("%d \t",is_active);
+//		i2s_write_bytes(I2S_NUM_0,data,recv_len,portMAX_DELAY);
+//	}
+//	i2s_stop(I2S_NUM_0);
+//	simple_vad_free(vad);
+//	vTaskDelete(NULL);
+//}
+
+static void esp32_vad_task(void *pvParameters)
 {
-	int recv_len=0;
-	int is_active;
+	int recv_len = 0;
+	int is_active = 0;
+	int count = 0;
 	int16_t data[FRAME_SIZE];	// FRAME_SIZE * 16bit/2
 
 	simple_vad *vad = simple_vad_create();	//simple_vad_free(vad);
 	if (vad == NULL) {
 		vTaskDelete(NULL);
 	}
+	QueueHandle_t data_que = NULL;
+	data_que = xQueueCreate(2000, sizeof(int16_t) * FRAME_SIZE);	// 625k内存
+
 
 	i2s_start(I2S_NUM_0);
+	printf("\nstart vad detection\n");
 	while(1)
 	{
 		recv_len=i2s_read_bytes(I2S_NUM_0,data,320,portMAX_DELAY);
 		is_active = process_vad(vad, data);
 		printf("%d \t",is_active);
+		if (is_active == 1) {
+			count++;
+			if (count == 10) {
+				count = 0;
+				goto status_1;
+			}
+		} else {
+			count = 0;
+		}
 		i2s_write_bytes(I2S_NUM_0,data,recv_len,portMAX_DELAY);
 	}
+status_1:
+	printf("\nTo prepare the recording 20s\n");
+	for (int i = 0; i < 2000; i++)	// 0.01s * 2000 = 20s
+	{
+		recv_len=i2s_read_bytes(I2S_NUM_0,data,320,portMAX_DELAY);
+		xQueueSend(data_que, data, portMAX_DELAY);
+		is_active = process_vad(vad, data);
+		printf("%d \t", is_active);
+		if (is_active == 0) {
+			count++;
+			if (count == 100) {
+				count = 0;
+				goto status_2;
+			}
+		} else {
+			count = 0;
+		}
+		i2s_write_bytes(I2S_NUM_0, data, recv_len, portMAX_DELAY);
+	}
+status_2:
+	printf("\nplay recording\n");
+	while(1)
+	{
+		xQueueReceive(data_que,data,portMAX_DELAY);
+		i2s_write_bytes(I2S_NUM_0, data, recv_len, portMAX_DELAY);	//recv_len=320
+	}
+
 	i2s_stop(I2S_NUM_0);
 	simple_vad_free(vad);
 	vTaskDelete(NULL);
@@ -88,7 +154,9 @@ void app_main() {
 	ESP_ERROR_CHECK(ret);
 
 	audio_recorder_AC101_init();
-	xTaskCreatePinnedToCore(&alexa__AC101_task, "alexa__AC101_task", 8096, NULL,
+//	xTaskCreatePinnedToCore(&alexa__AC101_task, "alexa__AC101_task", 8096, NULL,
+//			2, NULL, 1);
+	xTaskCreatePinnedToCore(&esp32_vad_task, "esp32_vad_task", 40000, NULL,
 			2, NULL, 1);
 }
 
