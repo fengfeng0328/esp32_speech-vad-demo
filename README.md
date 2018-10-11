@@ -1,0 +1,1 @@
+Transplanting webrtc vad algorithm to esp32 and optimizing corresponding parameters can be used for voice vad detection. The hardware platform is AC101 development board of AITHINKER technology company
