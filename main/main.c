@@ -56,17 +56,16 @@ static void audio_recorder_AC101_init()
 
 static void alexa__AC101_task(void *pvParameters)
 {
-	//char buf[2048];
 	int recv_len=0;
-	i2s_start(I2S_NUM_0);
+	int is_active;
+	int16_t data[FRAME_SIZE];	// FRAME_SIZE * 16bit/2
 
 	simple_vad *vad = simple_vad_create();	//simple_vad_free(vad);
 	if (vad == NULL) {
 		vTaskDelete(NULL);
 	}
-	int16_t data[FRAME_SIZE];	// FRAME_SIZE * 16bit/2
-	int is_active;
 
+	i2s_start(I2S_NUM_0);
 	while(1)
 	{
 		recv_len=i2s_read_bytes(I2S_NUM_0,data,320,portMAX_DELAY);
@@ -74,6 +73,9 @@ static void alexa__AC101_task(void *pvParameters)
 		printf("%d \t",is_active);
 		i2s_write_bytes(I2S_NUM_0,data,recv_len,portMAX_DELAY);
 	}
+	i2s_stop(I2S_NUM_0);
+	simple_vad_free(vad);
+	vTaskDelete(NULL);
 }
 
 void app_main() {
